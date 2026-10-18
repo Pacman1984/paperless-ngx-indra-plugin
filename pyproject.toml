@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paperless-indra"
+dynamic = ["version"]
+description = "Local CPU OCR for Paperless-ngx 3.x with Datalab's Indra OCR (searchable archive PDFs with text layer)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["paperless", "paperless-ngx", "indra", "ocr", "parser", "plugin", "onnx"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Django",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Text Processing",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+# pikepdf, img2pdf and pillow already ship with Paperless-ngx. indra-ocr adds
+# onnxruntime, opencv-python-headless and huggingface_hub (numpy and
+# pypdfium2 are already present).
+dependencies = [
+    "indra-ocr>=0.3.2,<0.4",
+    "pikepdf>=9",
+    "img2pdf>=0.5",
+    "pillow>=10",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pdfminer.six>=20231228", "ocrmypdf>=17.12", "ruff>=0.6"]
+
+[project.urls]
+Homepage = "https://github.com/Pacman1984/paperless-ngx-indra-plugin"
+Issues = "https://github.com/Pacman1984/paperless-ngx-indra-plugin/issues"
+
+[project.entry-points."paperless_ngx.parsers"]
+indra = "paperless_indra.parser:IndraDocumentParser"
+
+[tool.setuptools.dynamic]
+version = { attr = "paperless_indra.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["paperless_indra*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = ["models: needs the real Indra models (downloaded from Hugging Face on first run)"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM"]

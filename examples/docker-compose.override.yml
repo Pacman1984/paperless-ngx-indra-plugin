@@ -1,0 +1,29 @@
+# Drop-in override for the official Paperless-ngx docker-compose stack.
+# Put it next to your docker-compose.yml; `docker compose` merges it
+# automatically. Service name "webserver" matches the upstream examples -
+# adjust if yours differs.
+#
+# Option A (recommended): custom image with plugin and models baked in.
+services:
+  webserver:
+    image: paperless-ngx-indra:3.3.1
+    build:
+      # Point context at a local checkout of this repository.
+      context: ./paperless-ngx-indra-plugin
+      dockerfile: docker/Dockerfile
+      args:
+        PAPERLESS_TAG: "3.3.1"
+    # Optional PAPERLESS_INDRA_* settings live in docker-compose.env (env_file).
+
+# Option B: keep the stock image and install at container start instead.
+# Remove the block above and use this one:
+#
+# services:
+#   webserver:
+#     image: ghcr.io/paperless-ngx/paperless-ngx:3.3.1
+#     volumes:
+#       - ./custom-cont-init.d:/custom-cont-init.d:ro
+#     environment:
+#       PAPERLESS_INDRA_PIP_SPEC: git+https://github.com/Pacman1984/paperless-ngx-indra-plugin.git@main
+#       # Models are downloaded once into the data volume, then used offline.
+#       PAPERLESS_INDRA_MODEL_DIR: /usr/src/paperless/data/indra-ocr

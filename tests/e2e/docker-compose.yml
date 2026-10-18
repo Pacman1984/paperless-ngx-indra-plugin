@@ -1,0 +1,42 @@
+# End-to-end check: real Paperless-ngx 3.3.1 + plugin + Indra, all local.
+#
+#   bash tests/e2e/run-e2e.sh
+#
+# Throwaway stack: SQLite, no ports exposed, data in named volumes that
+# run-e2e.sh removes again. No external OCR service is involved.
+name: paperless-indra-e2e
+
+services:
+  redis:
+    image: docker.io/library/redis:8
+    networks: [internal]
+
+  paperless:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+      args:
+        PAPERLESS_TAG: ${PAPERLESS_TAG:-3.3.1}
+    image: paperless-ngx-indra:e2e
+    depends_on: [redis]
+    # Prove OCR needs no internet at runtime: models come from the image.
+    networks: [internal]
+    volumes:
+      - data:/usr/src/paperless/data
+      - media:/usr/src/paperless/media
+      - ./consume:/usr/src/paperless/consume
+    environment:
+      PAPERLESS_REDIS: redis://redis:6379
+      # run-e2e.sh exports a random throwaway key; Paperless >= 3.3 refuses to start without one.
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:?run via run-e2e.sh or export PAPERLESS_SECRET_KEY}
+      PAPERLESS_OCR_LANGUAGE: deu
+      PAPERLESS_CONSUMER_POLLING: "2"
+      HF_HUB_OFFLINE: "1"
+
+networks:
+  internal:
+    internal: true
+
+volumes:
+  data:
+  media:
