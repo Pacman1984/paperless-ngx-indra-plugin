@@ -6,10 +6,10 @@ on ONNX Runtime that runs on the CPU. It runs **inside the Paperless container**
 so no extra service or GPU is needed. The plugin writes a **searchable archive PDF with an invisible text
 layer**, so search, highlighting and the archive version keep working in Paperless.
 
-- **Local.** OCR runs in the Paperless worker. In the custom image the models (~18 MB) are baked in, so
-  nothing is downloaded at runtime and no documents leave the host.
-- **Fast.** Datalab reports ~230 ms per page on 4 CPU cores. In this repo's end-to-end test, an A4 scan
-  took ~0.65 s in the Paperless container, and the models loaded in 0.65 s once per worker.
+- **Local.** OCR runs in the Paperless worker. In the custom image the models (~73 MB: networks and
+  language models) are baked in, so nothing is downloaded at runtime and no documents leave the host.
+- **Fast.** Datalab reports ~210 ms per page on 4 CPU cores (indra-ocr 1.1). Measured here with 2 threads:
+  ~0.3 s per A4 scan once the models are loaded; loading takes a few seconds once per worker.
 - **Layout-aware content.** Document content is Indra's Markdown (headings, lists, tables), or plain text.
 - **Accurate text layer.** Invisible text is placed at Indra's line boxes. This includes scans that were
   fed in sideways or upside down: Indra turns them upright, and the plugin writes the text back in the
@@ -75,7 +75,7 @@ docker build -f docker/Dockerfile --build-arg PAPERLESS_TAG=3.3.1 \
 
 Then use `paperless-ngx-indra:3.3.1` as the image of your Paperless service. See
 [`examples/docker-compose.override.yml`](examples/docker-compose.override.yml) (option A). The image is
-about 245 MB larger than the stock Paperless image.
+about 300–330 MB larger than the stock Paperless image.
 
 ### B. Bootstrap script (stock image)
 
@@ -131,7 +131,7 @@ signal, and with weight 15 it wins over Tesseract's 0. This is tested end to end
 3. Restart. The log shows:
 
    ```
-   Registered parser 'Paperless-ngx Indra OCR Parser' v0.1.0 for Paperless 2.x (weight 15).
+   Registered parser 'Paperless-ngx Indra OCR Parser' v0.2.0 for Paperless 2.x (weight 15).
    Indra OCR read scan.pdf: 1 page(s) (1 ocr)
    ```
 
@@ -181,14 +181,14 @@ Tika/Gotenberg.
 1. Restart Paperless and check the log (`docker compose logs webserver`). Discovery is logged as:
 
    ```
-   Loaded third-party parser 'Paperless-ngx Indra OCR Parser' v0.1.0 by paperless-indra contributors (entrypoint: 'indra').
+   Loaded third-party parser 'Paperless-ngx Indra OCR Parser' v0.2.0 by paperless-indra contributors (entrypoint: 'indra').
    ```
 
 2. Consume a scanned PDF. The log shows:
 
    ```
-   Document handled by third-party parser 'Paperless-ngx Indra OCR Parser' v0.1.0 — https://github.com/...
-   Loading Indra OCR 0.3.2 (threads=2, dpi=200, mode=auto)
+   Document handled by third-party parser 'Paperless-ngx Indra OCR Parser' v0.2.0 — https://github.com/...
+   Loading Indra OCR 1.1.1 (threads=2, dpi=200, mode=auto)
    Indra OCR read scan.pdf: 1 page(s) (1 ocr)
    ```
 
@@ -203,15 +203,18 @@ docker compose exec webserver python3 -c "import paperless_indra, indra_ocr; pri
 
 ## Limitations
 
-These limits are Indra's own, as listed by Datalab:
+These limits are Indra's own, as listed by Datalab for indra-ocr 1.1:
 
-- **Scripts.** Scans in Latin (about 50 languages, German included), Cyrillic, Greek, Devanagari, Bengali
-  and Chinese are OCR'd. Arabic, Hebrew, Thai, Japanese kana and Korean are only read from digital PDF
-  text layers.
-- **Content it handles poorly.** Handwriting, vertical text, and complex tables (merged cells, missing
-  ruling lines).
-- **Accuracy.** On OmniParseBench's text score Indra is well ahead of Tesseract 5 (41.3 vs 19.3), but
-  VLM-based engines such as MinerU are stronger on hard layouts. Combine the two with
+- **Scripts.** Scans in 80+ languages are OCR'd, among them Latin scripts (German included), Cyrillic,
+  Greek, Chinese, Japanese, Korean, Arabic, Hebrew and the Indic scripts. Scripts outside that list are
+  only read from digital PDF text layers.
+- **Handwriting.** It is read, but not well: about a third of the words on handwritten pages (25.2% on
+  the OmniParseBench handwriting tests). Cursive and faint pencil read worst.
+- **Complex tables.** Merged or spanning cells, wrapped cell text, nested headers or missing ruling lines
+  can put text in the wrong row or column. Simple grid tables read well.
+- **Degraded scans.** Old, faded or low-resolution scans read poorly.
+- **Accuracy.** Indra 1.1 scores 66.7 on OmniParseBench (0.3.2: 62.3) and is far ahead of Tesseract, but
+  VLM-based engines such as MinerU are stronger on hard layouts and handwriting. Combine the two with
   `workflow_only` (see above) if you need both. That combination needs Paperless 3.x; 2.x has no remote OCR
   routing.
 - **Ignored Paperless OCR settings.** `PAPERLESS_OCR_MODE` (`skip`/`redo`/`force`) and the
@@ -233,7 +236,7 @@ These limits are Indra's own, as listed by Datalab:
 
 ```bash
 uv sync                    # creates .venv (includes indra-ocr and onnxruntime)
-uv run pytest              # unit tests; tests marked "models" download the ~18 MB models once
+uv run pytest              # unit tests; tests marked "models" download the ~73 MB models once
 uv run pytest -m "not models"   # offline subset
 uv run ruff check .
 ```

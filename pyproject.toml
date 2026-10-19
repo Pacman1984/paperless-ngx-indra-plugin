@@ -22,7 +22,7 @@ classifiers = [
 # onnxruntime, opencv-python-headless and huggingface_hub (numpy and
 # pypdfium2 are already present).
 dependencies = [
-    "indra-ocr>=0.3.2,<0.4",
+    "indra-ocr>=1.1.1,<2",
     "pikepdf>=9",
     "img2pdf>=0.5",
     "pillow>=10",

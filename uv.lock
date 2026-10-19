@@ -599,7 +599,7 @@ wheels = [
 
 [[package]]
 name = "indra-ocr"
-version = "0.3.2"
+version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -609,9 +609,9 @@ dependencies = [
     { name = "opencv-python-headless" },
     { name = "pypdfium2" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/23/19/1cb88e1e0c36672a7b48558734c6bfdfd1270ac373b33121513f87ddeeb9/indra_ocr-0.3.2.tar.gz", hash = "sha256:672963005be6fe9986889b48d4540a50ba4241da8e601cfa4665227cb5bf91fc", size = 83600, upload-time = "2026-10-15T06:45:57.448Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/51/e3/0821b04e833e7b9428d233dd410304763bb1e49c5060e19667510b0416d8/indra_ocr-1.1.1.tar.gz", hash = "sha256:8e464eee20f194edc39e6524ef14d62ba079a7bb3e3345660b0fc8c0d5e35f51", size = 111071, upload-time = "2026-10-19T16:37:20.753Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/40/d7/559c3b1c4da6f71e249885fd9538797c895419d3631b08e531cae05fca50/indra_ocr-0.3.2-py3-none-any.whl", hash = "sha256:d55ad2be54c45df80e977626bcf0d64cf6df7aa20eecf608f90669c90057eed2", size = 77052, upload-time = "2026-10-15T06:45:55.676Z" },
+    { url = "https://files.pythonhosted.org/packages/94/e2/e7366201f4af7121ca74c3c75ddbc1b6d198120e16110a2c38aea01ef771/indra_ocr-1.1.1-py3-none-any.whl", hash = "sha256:6b0ee1dfb26f56892ecca551ed636233a8f50c7962ac735d0b0772aec0abba08", size = 95272, upload-time = "2026-10-19T16:37:19.028Z" },
 ]
 
 [[package]]
@@ -1072,7 +1072,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "img2pdf", specifier = ">=0.5" },
-    { name = "indra-ocr", specifier = ">=0.3.2,<0.4" },
+    { name = "indra-ocr", specifier = ">=1.1.1,<2" },
     { name = "pikepdf", specifier = ">=9" },
     { name = "pillow", specifier = ">=10" },
 ]
