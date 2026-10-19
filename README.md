@@ -26,17 +26,21 @@ layer**, so search, highlighting and the archive version keep working in Paperle
 
 ## How it works
 
-```
-Paperless consumer ──► IndraDocumentParser.parse()
-                         │ image? → img2pdf (local)
-                         │ born-digital PDF & no archive wanted? → use embedded text, done
-                         ▼
-                       Indra (in-process, ONNX Runtime, cached per worker)
-                         │ per page: PDF text layer where sound, OCR elsewhere
-                         ▼
-                       content  = Markdown (or plain text)
-                       archive  = original pages + invisible text on OCR'd lines
-                                → PDF/A via OCRmyPDF (ocr_engine=none) if OUTPUT_TYPE is pdfa*
+```mermaid
+flowchart TD
+    A["Paperless consumer"] --> B["IndraDocumentParser.parse()"]
+    B --> C{"Image?"}
+    C -- yes --> D["Wrap in PDF with img2pdf (local)"]
+    C -- PDF --> E{"Born-digital PDF and<br/>no archive wanted?"}
+    E -- yes --> X["Use the embedded text, done"]
+    E -- no --> F
+    D --> F["Indra OCR in-process<br/>(ONNX Runtime, loaded once per worker)"]
+    F --> G["Per page: PDF text layer where sound,<br/>OCR everywhere else"]
+    G --> H["Content: Markdown or plain text"]
+    G --> I["Archive: original pages +<br/>invisible text on OCR'd lines"]
+    I --> J{"OUTPUT_TYPE pdfa*?"}
+    J -- yes --> K["PDF/A via OCRmyPDF,<br/>no OCR engine"]
+    J -- no --> L["Plain PDF"]
 ```
 
 The parser registers with score `15`. That beats the built-in Tesseract parser (`10`) and stays below
