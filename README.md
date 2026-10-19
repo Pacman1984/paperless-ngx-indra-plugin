@@ -17,13 +17,12 @@ layer**, so search, highlighting and the archive version keep working in Paperle
 - **Mixed PDFs.** With `PAPERLESS_INDRA_MODE=auto`, Indra reads a PDF's own text layer where it is sound
   and OCRs only the rest.
 - **PDF/A archives.** Archive PDFs are converted to PDF/A following `PAPERLESS_OCR_OUTPUT_TYPE` (OCRmyPDF
-  with `ocr_engine=none`, so Tesseract never runs).
+  without an OCR engine, so Tesseract never runs).
 - **No changes to Paperless.** It's configured only through optional `PAPERLESS_INDRA_*` variables, and
   Paperless core is not forked or patched.
-
-> [!NOTE]
-> Requires **Paperless-ngx 3.0 or later**, which introduced the `paperless_ngx.parsers` entry point. On
-> 2.x the plugin is ignored.
+- **Paperless 3.x and 2.x.** On 3.x the plugin loads through the `paperless_ngx.parsers` entry point. On
+  2.x (tested with 2.20.15) you turn it on with one line, `PAPERLESS_APPS=paperless_indra.legacy`; see
+  [Paperless-ngx 2.x](#paperless-ngx-2x).
 
 ## How it works
 
@@ -55,7 +54,10 @@ then go to the remote engine, and everything else is OCR'd locally by Indra.
 
 The image includes the plugin, Indra's runtime deps (onnxruntime, opencv-python-headless,
 huggingface_hub) and the model files of the revision the pinned `indra-ocr` release was tested against.
-The build fails if installing the plugin would change any package version Paperless ships with.
+
+The new packages are installed with every package Paperless already ships pinned as a constraint, so only
+packages are added and none are upgraded. As a second safety net, the build fails if any existing version
+changes anyway.
 
 From a local checkout:
 
@@ -85,6 +87,8 @@ If you set `PAPERLESS_INDRA_MODEL_DIR` to a folder in the data volume, for examp
 `/usr/src/paperless/data/indra-ocr`, the models are downloaded there once and OCR works offline after
 that. See option B in [`examples/docker-compose.override.yml`](examples/docker-compose.override.yml).
 
+The script uses the same constraint approach as the image, so Paperless' own packages stay untouched.
+
 To build a wheel:
 
 ```bash
@@ -102,6 +106,45 @@ uv pip install --python /path/to/paperless/venv/bin/python \
 
 The models are downloaded from Hugging Face on first use. For offline use, point `INDRA_OCR_MODEL_DIR` at
 a local copy.
+
+## Paperless-ngx 2.x
+
+Paperless 2.x has no parser entry point, but it can load extra Django apps. The plugin ships a small one,
+`paperless_indra.legacy`. Like the built-in Tesseract parser, it registers through Paperless' parser
+signal, and with weight 15 it wins over Tesseract's 0. This is tested end to end with **2.20.15**.
+
+1. Build the image on your 2.x version, or use the bootstrap script on the stock 2.x image (options A/B
+   above):
+
+   ```bash
+   docker build -f docker/Dockerfile --build-arg PAPERLESS_TAG=2.20.15 -t paperless-ngx-indra:2.20.15 .
+   ```
+
+2. Add one line to `docker-compose.env`:
+
+   ```
+   PAPERLESS_APPS=paperless_indra.legacy
+   ```
+
+   If `PAPERLESS_APPS` is already set, for example for social login providers, append it with a comma.
+
+3. Restart. The log shows:
+
+   ```
+   Registered parser 'Paperless-ngx Indra OCR Parser' v0.1.0 for Paperless 2.x (weight 15).
+   Indra OCR read scan.pdf: 1 page(s) (1 ocr)
+   ```
+
+On 2.x the 2.x archive settings apply: `PAPERLESS_OCR_SKIP_ARCHIVE_FILE` (`never`/`with_text`/`always`)
+and `PAPERLESS_OCR_MODE=skip_noarchive`. Thumbnails, page counts and metadata come from Paperless' own
+Tesseract parser class, which the 2.x parser extends, but Tesseract itself is never run.
+
+Paperless 2.x bundles OCRmyPDF 16, which has no `ocr_engine=none` option yet. PDF/A conversion there
+uses a small null-OCR-engine plugin shipped with this package (`paperless_indra.ocrmypdf_null`). The
+archive's creator tag shows it, for example `OCRmyPDF (no OCR, paperless-indra)`.
+
+**When you upgrade to 3.x,** remove `paperless_indra.legacy` from `PAPERLESS_APPS`; the same package then
+loads through the 3.x entry point. Left in place, it only logs a hint and does nothing.
 
 ## Configuration
 
@@ -169,7 +212,8 @@ These limits are Indra's own, as listed by Datalab:
   ruling lines).
 - **Accuracy.** On OmniParseBench's text score Indra is well ahead of Tesseract 5 (41.3 vs 19.3), but
   VLM-based engines such as MinerU are stronger on hard layouts. Combine the two with
-  `workflow_only` (see above) if you need both.
+  `workflow_only` (see above) if you need both. That combination needs Paperless 3.x; 2.x has no remote OCR
+  routing.
 - **Ignored Paperless OCR settings.** `PAPERLESS_OCR_MODE` (`skip`/`redo`/`force`) and the
   deskew/rotate/clean settings only apply to Tesseract. Indra turns pages upright itself, and the archive
   keeps the original pages.
@@ -194,9 +238,12 @@ uv run pytest -m "not models"   # offline subset
 uv run ruff check .
 ```
 
-End-to-end test with Paperless 3.3.1 in Docker (SQLite and Redis). The container runs on an internal-only
-network, which proves the OCR needs no internet. It is a throwaway stack that is torn down afterwards:
+End-to-end test with Paperless in Docker (SQLite and Redis). The container runs on an internal-only
+network, which proves the OCR needs no internet. The test also checks that the archive is PDF/A with a
+searchable text layer and that OCRmyPDF ran without an OCR engine. It is a throwaway stack that is torn
+down afterwards:
 
 ```bash
-bash tests/e2e/run-e2e.sh
+bash tests/e2e/run-e2e.sh            # Paperless 3.3.1 (entry point)
+LEGACY=1 bash tests/e2e/run-e2e.sh   # Paperless 2.20.15 (PAPERLESS_APPS)
 ```

@@ -38,7 +38,12 @@ if [[ -n "${wheel}" && -n "${installed}" && "$(basename "${wheel}")" == paperles
     log "paperless-indra ${installed} already installed."
 else
     log "Installing indra-ocr ${indra_version} and ${spec}"
-    pip_install "indra-ocr==${indra_version}"
+    # Pin everything Paperless already ships, so only new packages are added.
+    constraints="$(mktemp)"
+    python3 -m pip freeze 2>/dev/null | grep -E '^[A-Za-z0-9_.-]+==' > "${constraints}" \
+        || uv pip freeze --python "${py}" | grep -E '^[A-Za-z0-9_.-]+==' > "${constraints}"
+    pip_install -c "${constraints}" "indra-ocr==${indra_version}"
+    rm -f "${constraints}"
     pip_install --no-deps "${spec}"
     log "Installed paperless-indra $(python3 -c 'import paperless_indra as m; print(m.__version__)')"
 fi

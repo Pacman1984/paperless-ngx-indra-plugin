@@ -147,11 +147,26 @@ def test_image_is_wrapped_into_pdf(paperless_stubs, fake_engine, invoice):
 
 
 def test_pages_with_text_are_not_overlaid(paperless_stubs, fake_engine, invoice, monkeypatch):
+    from paperless_indra import core
+
+    monkeypatch.setattr(core, "pages_with_text", lambda pdf: {0})
     _, scan_pdf = invoice
     with IndraDocumentParser() as p:
-        monkeypatch.setattr(p, "_pages_with_text", lambda pdf: {0})
         p.parse(scan_pdf, "application/pdf")
         assert extract_text(str(p.get_archive_path())).strip() == ""
+
+
+def test_pages_with_text_detection(invoice, tmp_path):
+    from paperless_indra import core
+    from paperless_indra.textlayer import TextItem, add_text_layer
+
+    _, scan_pdf = invoice
+    assert core.pages_with_text(scan_pdf) == set()
+    layered = tmp_path / "layered.pdf"
+    add_text_layer(
+        scan_pdf, [TextItem(0, (0.1, 0.1, 0.9, 0.12), "Musterfirma GmbH Beispielstrasse 12")], layered
+    )
+    assert core.pages_with_text(layered) == {0}
 
 
 def test_text_layer_disabled(paperless_stubs, fake_engine, invoice, monkeypatch):

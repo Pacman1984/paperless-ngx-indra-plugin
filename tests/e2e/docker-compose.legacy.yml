@@ -1,0 +1,12 @@
+# Paperless-ngx 2.x variant of the e2e stack (LEGACY=1 bash tests/e2e/run-e2e.sh):
+# 2.20.15 base image, plugin registered through PAPERLESS_APPS.
+name: paperless-indra-e2e-legacy
+
+services:
+  paperless:
+    build:
+      args:
+        PAPERLESS_TAG: ${PAPERLESS_TAG:-2.20.15}
+    image: paperless-ngx-indra:e2e-legacy
+    environment:
+      PAPERLESS_APPS: paperless_indra.legacy

@@ -1,4 +1,4 @@
-"""Paperless-ngx parser plugin that runs Datalab's Indra OCR locally.
+"""Paperless-ngx 3.x parser plugin that runs Datalab's Indra OCR locally.
 
 Like the built-in Tesseract parser, everything happens inside the Paperless
 worker process; no extra service is needed. Flow for one document:
@@ -10,21 +10,22 @@ worker process; no extra service is needed. Flow for one document:
    elsewhere (``PAPERLESS_INDRA_MODE``). Markdown becomes the content.
 4. Only OCR'd lines get an invisible text layer in the archive copy (pages
    that already carry text are left alone), then the archive is converted to
-   PDF/A with OCRmyPDF using ``ocr_engine=none`` - Tesseract never runs.
+   PDF/A with OCRmyPDF without OCR - Tesseract never runs.
+
+Paperless 2.x uses :mod:`paperless_indra.legacy` instead.
 """
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import shutil
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
 
-from paperless_indra import __version__
+from paperless_indra import __version__, core
 from paperless_indra.config import IndraSettings
-from paperless_indra.engine import IndraError, PageResult, run
+from paperless_indra.engine import IndraError, run
 
 if TYPE_CHECKING:
     import datetime
@@ -34,25 +35,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("paperless.parsing.indra")
 
-_SUPPORTED_MIME_TYPES: dict[str, str] = {
-    "application/pdf": ".pdf",
-    "image/png": ".png",
-    "image/jpeg": ".jpg",
-    "image/tiff": ".tiff",
-    "image/bmp": ".bmp",
-    "image/gif": ".gif",
-    "image/webp": ".webp",
-}
-
-# A page with at least this many non-blank characters already has a text
-# layer and gets no additional invisible text (avoids duplicate hits).
-_PAGE_TEXT_MIN_CHARS = 20
-
 
 def _parse_error(message: str) -> Exception:
     from documents.parsers import ParseError
 
     return ParseError(message)
+
+
+def _ocr_config():
+    try:
+        from paperless.config import OcrConfig
+
+        return OcrConfig()
+    except Exception:  # pragma: no cover - defensive, config always exists
+        return None
 
 
 class IndraDocumentParser:
@@ -72,11 +68,11 @@ class IndraDocumentParser:
 
     @classmethod
     def supported_mime_types(cls) -> dict[str, str]:
-        return _SUPPORTED_MIME_TYPES
+        return core.SUPPORTED_MIME_TYPES
 
     @classmethod
     def score(cls, mime_type: str, filename: str, path: Path | None = None) -> int | None:
-        if mime_type not in _SUPPORTED_MIME_TYPES:
+        if mime_type not in core.SUPPORTED_MIME_TYPES:
             return None
         settings = IndraSettings.from_env()
         if not settings.enabled:
@@ -151,19 +147,11 @@ class IndraDocumentParser:
             logger.error("Indra OCR failed: %s", e)
             raise _parse_error(f"Indra OCR failed: {e}") from e
 
-        sources = {}
-        for p in pages:
-            sources[p.source] = sources.get(p.source, 0) + 1
-        logger.info(
-            "Indra OCR read %s: %d page(s) (%s)",
-            document_path.name,
-            len(pages),
-            ", ".join(f"{n} {s}" for s, n in sorted(sources.items())),
-        )
-        if pages and all(p.source == "error" for p in pages):
-            raise _parse_error(f"Indra OCR failed on every page: {pages[0].note}")
+        core.log_summary(document_path.name, pages)
+        if failed := core.all_pages_failed(pages):
+            raise _parse_error(f"Indra OCR failed on every page: {failed}")
 
-        self._text = self._content(pages)
+        self._text = core.content_from_pages(pages, self._settings)
 
         if not produce_archive or not self._settings.text_layer:
             return
@@ -171,115 +159,32 @@ class IndraDocumentParser:
         if not items:
             logger.debug("Indra: no OCR'd lines, no archive needed")
             return
-        self._archive_path = self._build_archive(source_pdf, items, mime_type)
-
-    def _content(self, pages: list[PageResult]) -> str:
-        from paperless.parsers.utils import post_process_text
-
-        if self._settings.content_format == "text":
-            text = "\n\n".join(p.text for p in pages if p.text.strip())
-            return post_process_text(text) or ""
-        return "\n\n".join(p.markdown.strip() for p in pages if p.markdown.strip()).strip()
-
-    def _build_archive(self, source_pdf: Path, items: list, mime_type: str) -> Path:
-        from paperless_indra.textlayer import add_text_layer
-
-        skip = self._pages_with_text(source_pdf) if mime_type == "application/pdf" else set()
-        layered = self._tempdir / "archive-textlayer.pdf"
+        ocr_config = _ocr_config()
         try:
-            touched = add_text_layer(source_pdf, items, layered, skip_pages=skip)
-        except Exception as e:
-            raise _parse_error(f"Could not write text layer: {e}") from e
-        logger.debug("Indra: text layer on %d page(s), %d page(s) already had text", touched, len(skip))
-        return self._maybe_pdfa(layered)
-
-    def _maybe_pdfa(self, pdf: Path) -> Path:
-        """Convert to PDF/A per PAPERLESS_OCR_OUTPUT_TYPE without running OCR."""
-        if not self._settings.pdfa:
-            return pdf
-        try:
-            from paperless.config import OcrConfig
-
-            ocr_config = OcrConfig()
-            output_type = str(ocr_config.output_type)
-        except Exception:  # pragma: no cover - defensive, config always exists
-            return pdf
-        if "pdfa" not in output_type:
-            return pdf
-
-        import ocrmypdf
-
-        out = self._tempdir / "archive.pdf"
-        kwargs = {
-            "output_type": output_type,
-            "skip_text": True,
-            "ocr_engine": "none",
-            "progress_bar": False,
-        }
-        if ocr_config.color_conversion_strategy:
-            kwargs["color_conversion_strategy"] = str(ocr_config.color_conversion_strategy)
-        try:
-            ocrmypdf.ocr(pdf, out, **kwargs)
-            return out
-        except Exception as e:
-            logger.warning("PDF/A conversion failed (%s), keeping plain PDF with text layer.", e)
-            return pdf
-
-    def _pages_with_text(self, pdf: Path) -> set[int]:
-        try:
-            from pdfminer.high_level import extract_pages
-            from pdfminer.layout import LTTextContainer
-        except ImportError:  # pragma: no cover
-            return set()
-        pages: set[int] = set()
-        try:
-            for idx, page in enumerate(extract_pages(str(pdf))):
-                chars = sum(
-                    len("".join(el.get_text().split())) for el in page if isinstance(el, LTTextContainer)
-                )
-                if chars >= _PAGE_TEXT_MIN_CHARS:
-                    pages.add(idx)
-        except Exception as e:
-            logger.warning("Could not inspect existing PDF text (%s); assuming none.", e)
-            return set()
-        return pages
+            self._archive_path = core.build_archive(
+                source_pdf,
+                items,
+                self._tempdir,
+                is_pdf_input=mime_type == "application/pdf",
+                output_type=str(ocr_config.output_type) if ocr_config else None,
+                color_conversion_strategy=getattr(ocr_config, "color_conversion_strategy", None),
+                settings=self._settings,
+            )
+        except core.ArchiveError as e:
+            raise _parse_error(str(e)) from e
 
     def _image_to_pdf(self, image: Path) -> Path:
-        """Wrap an image into a PDF with sensible DPI (Paperless semantics)."""
-        if self._image_pdf is not None:
-            return self._image_pdf
-        import img2pdf
-        from PIL import Image
-
-        src = image
-        with Image.open(image) as im:
-            dpi = None
-            with contextlib.suppress(KeyError, TypeError, IndexError, ValueError):
-                dpi = round(im.info["dpi"][0]) or None
-            needs_convert = im.mode in ("RGBA", "LA", "P", "PA") or (
-                getattr(im, "n_frames", 1) > 1 and im.format == "GIF"
-            )
-            if needs_convert or im.format not in ("JPEG", "PNG", "TIFF", "JPEG2000"):
-                src = self._tempdir / "image-flat.png"
-                im.convert("RGB").save(src, **({"dpi": (dpi, dpi)} if dpi else {}))
-            width = im.size[0]
-        if not dpi:
+        if self._image_pdf is None:
+            ocr_config = _ocr_config()
             try:
-                from paperless.config import OcrConfig
-
-                dpi = OcrConfig().image_dpi
-            except Exception:  # pragma: no cover
-                dpi = None
-        if not dpi:
-            dpi = max(72, int(width / (21 / 2.54)))  # assume A4 width
-        out = self._tempdir / "image.pdf"
-        layout = img2pdf.get_fixed_dpi_layout_fun((dpi, dpi))
-        try:
-            out.write_bytes(img2pdf.convert(str(src), layout_fun=layout, rotation=img2pdf.Rotation.ifvalid))
-        except Exception as e:
-            raise _parse_error(f"Could not convert image to PDF: {e}") from e
-        self._image_pdf = out
-        return out
+                self._image_pdf = core.image_to_pdf(
+                    image,
+                    self._tempdir,
+                    getattr(ocr_config, "image_dpi", None),
+                )
+            except core.ArchiveError as e:
+                raise _parse_error(str(e)) from e
+        return self._image_pdf
 
     # ------------------------------------------------------------------
     # Result accessors

@@ -46,15 +46,20 @@ class TextItem:
     turn: int = 0  # quarter turns counter-clockwise of the text on the displayed page
 
 
-def _font_program() -> bytes | None:
-    """OCRmyPDF's glyphless Occulta font, if available (embedded for viewers)."""
-    try:
-        return resources.files("ocrmypdf.data").joinpath("Occulta.ttf").read_bytes()
-    except Exception:  # pragma: no cover - ocrmypdf is always present in Paperless
-        return None
+# Glyphless fonts bundled with OCRmyPDF and the id of a glyph 0.5 em wide:
+# Occulta (OCRmyPDF >= 17, ``blank1`` of 1000 units) and Tesseract's
+# GlyphLessFont pdf.ttf (OCRmyPDF 16 in Paperless 2.x, ``.null`` of 2048).
+_GLYPHLESS_FONTS = (("Occulta.ttf", 4), ("pdf.ttf", 1))
 
 
-_OCCULTA_BLANK_500 = 4  # glyph id of ``blank1`` (500-unit advance) in Occulta
+def _font_program() -> tuple[bytes | None, int]:
+    """A glyphless font from OCRmyPDF to embed (PDF/A needs embedded fonts)."""
+    for name, gid in _GLYPHLESS_FONTS:
+        try:
+            return resources.files("ocrmypdf.data").joinpath(name).read_bytes(), gid
+        except Exception:
+            continue
+    return None, 1  # pragma: no cover - ocrmypdf is always present in Paperless
 
 
 def _to_unicode_cmap() -> bytes:
@@ -74,8 +79,9 @@ def _to_unicode_cmap() -> bytes:
 
 
 def _make_font(pdf: pikepdf.Pdf) -> pikepdf.Object:
-    # Every CID maps to the same blank 500-unit glyph.
-    cid_to_gid = pdf.make_stream(_OCCULTA_BLANK_500.to_bytes(2, "big") * 65536)
+    program, gid = _font_program()
+    # Every CID maps to the same blank glyph that is 0.5 em wide.
+    cid_to_gid = pdf.make_stream(gid.to_bytes(2, "big") * 65536)
     descriptor = pikepdf.Dictionary(
         Type=pikepdf.Name.FontDescriptor,
         FontName=pikepdf.Name("/IndraGlyphLess"),
@@ -87,7 +93,6 @@ def _make_font(pdf: pikepdf.Pdf) -> pikepdf.Object:
         CapHeight=800,
         StemV=80,
     )
-    program = _font_program()
     if program:
         descriptor[pikepdf.Name.FontFile2] = pdf.make_stream(program)
     cid_font = pikepdf.Dictionary(
