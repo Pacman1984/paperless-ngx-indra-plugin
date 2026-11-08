@@ -160,7 +160,7 @@ All settings are optional. A commented template is in
 | `PAPERLESS_INDRA_MODE` | `auto` | `auto` (PDF text layer where sound, OCR elsewhere), `ocr` (always OCR) or `text` |
 | `PAPERLESS_INDRA_CONTENT_FORMAT` | `markdown` | `markdown` or `text` |
 | `PAPERLESS_INDRA_TEXT_LAYER` | `true` | Write the invisible text layer and produce an archive PDF |
-| `PAPERLESS_INDRA_REPLACE_TEXT_LAYER` | `true` if `PAPERLESS_OCR_MODE` is `redo` or `force`, else `false` | Remove an existing invisible (OCR) text layer and write Indra's instead. Visible text is kept |
+w| `PAPERLESS_INDRA_REPLACE_TEXT_LAYER` | `true` if Paperless' OCR mode (web UI configuration or `PAPERLESS_OCR_MODE`) is `redo` or `force`, else `false` | Remove an existing invisible (OCR) text layer and write Indra's instead. Visible text is kept |
 | `PAPERLESS_INDRA_PDFA` | `true` | Convert the archive to PDF/A when `PAPERLESS_OCR_OUTPUT_TYPE` is `pdfa*` |
 | `PAPERLESS_INDRA_KEEP_FURNITURE` | `false` | Keep page headers and footers in the Markdown |
 | `PAPERLESS_INDRA_MATH` | `false` | Formulas as LaTeX. Needs the extra math models, which the image doesn't include |
@@ -219,8 +219,8 @@ These limits are Indra's own, as listed by Datalab for indra-ocr 1.1:
   `workflow_only` (see above) if you need both. That combination needs Paperless 3.x; 2.x has no remote OCR
   routing.
 - **Ignored Paperless OCR settings.** The deskew/rotate/clean settings only apply to Tesseract.
-  `PAPERLESS_OCR_MODE` only sets the default of `PAPERLESS_INDRA_REPLACE_TEXT_LAYER` (`redo`/`force`
-  turn it on). Indra turns pages upright itself, and the archive
+  The OCR mode (`PAPERLESS_OCR_MODE` or the web UI configuration) only sets the default of
+  `PAPERLESS_INDRA_REPLACE_TEXT_LAYER` (`redo`/`force` turn it on). Indra turns pages upright itself, and the archive
   keeps the original pages.
 
 ## Licenses

@@ -77,6 +77,7 @@ class IndraLegacyDocumentParser(RasterisedDocumentParser):
                 output_type=str(self.settings.output_type),
                 color_conversion_strategy=self.settings.color_conversion_strategy,
                 settings=indra,
+                ocr_mode=getattr(self.settings, "mode", None),
             )
         except core.ArchiveError as e:
             raise ParseError(str(e)) from e

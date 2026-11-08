@@ -169,6 +169,7 @@ class IndraDocumentParser:
                 output_type=str(ocr_config.output_type) if ocr_config else None,
                 color_conversion_strategy=getattr(ocr_config, "color_conversion_strategy", None),
                 settings=self._settings,
+                ocr_mode=getattr(ocr_config, "mode", None),
             )
         except core.ArchiveError as e:
             raise _parse_error(str(e)) from e

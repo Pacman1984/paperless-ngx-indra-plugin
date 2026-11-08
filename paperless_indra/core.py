@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -133,6 +134,25 @@ def image_to_pdf(image: Path, tempdir: Path, fallback_dpi: int | None = None) ->
     return out
 
 
+_REDO_MODES = {"redo", "force"}
+
+
+def replace_text_layer(settings: IndraSettings, ocr_mode: object = None) -> bool:
+    """Whether to replace an existing invisible text layer.
+
+    ``PAPERLESS_INDRA_REPLACE_TEXT_LAYER`` wins when set. Otherwise Paperless'
+    OCR mode decides: ``ocr_mode`` is what Paperless resolved (the web UI
+    configuration overrides the environment), ``PAPERLESS_OCR_MODE`` is the
+    fallback when that is not available.
+    """
+    if settings.replace_text_layer is not None:
+        return settings.replace_text_layer
+    mode = ocr_mode if ocr_mode not in (None, "") else os.environ.get("PAPERLESS_OCR_MODE", "")
+    # A Django TextChoices member prints as its value; be lenient anyway.
+    value = str(getattr(mode, "value", mode)).strip().strip("\"'").lower().rsplit(".", 1)[-1]
+    return value in _REDO_MODES
+
+
 def build_archive(
     source_pdf: Path,
     items: list[TextItem],
@@ -142,10 +162,11 @@ def build_archive(
     output_type: str | None,
     color_conversion_strategy: str | None,
     settings: IndraSettings,
+    ocr_mode: object = None,
 ) -> Path:
     """Text layer on OCR'd pages, then PDF/A if requested."""
     stripped: set[int] = set()
-    if is_pdf_input and settings.replace_text_layer:
+    if is_pdf_input and replace_text_layer(settings, ocr_mode):
         # Only pages Indra has lines for, so no page ends up without text.
         target = {item.page_idx for item in items}
         cleaned = tempdir / "archive-stripped.pdf"
