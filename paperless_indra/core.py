@@ -13,7 +13,7 @@ from pathlib import Path
 
 from paperless_indra.config import IndraSettings
 from paperless_indra.engine import PageResult
-from paperless_indra.textlayer import TextItem, add_text_layer
+from paperless_indra.textlayer import TextItem, add_text_layer, strip_invisible_text
 
 logger = logging.getLogger("paperless.parsing.indra")
 
@@ -144,7 +144,21 @@ def build_archive(
     settings: IndraSettings,
 ) -> Path:
     """Text layer on OCR'd pages, then PDF/A if requested."""
-    skip = pages_with_text(source_pdf) if is_pdf_input else set()
+    stripped: set[int] = set()
+    if is_pdf_input and settings.replace_text_layer:
+        # Only pages Indra has lines for, so no page ends up without text.
+        target = {item.page_idx for item in items}
+        cleaned = tempdir / "archive-stripped.pdf"
+        try:
+            stripped = strip_invisible_text(source_pdf, cleaned, target)
+        except Exception as e:
+            logger.warning("Could not remove the old text layer (%s); keeping it.", e)
+        else:
+            source_pdf = cleaned
+            logger.info("Indra: replacing the old invisible text layer on %d page(s)", len(stripped))
+    # Pages stripped above may still carry some visible text (a printed
+    # header, say); they get the new layer anyway.
+    skip = (pages_with_text(source_pdf) - stripped) if is_pdf_input else set()
     layered = tempdir / "archive-textlayer.pdf"
     try:
         touched = add_text_layer(source_pdf, items, layered, skip_pages=skip)
