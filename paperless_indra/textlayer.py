@@ -15,6 +15,7 @@ the invisible text follows the printed text instead of crossing it.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -191,6 +192,91 @@ def _line_ops(geo: _PageGeometry, font: str, item: TextItem) -> str:
 
 def page_ops(geo: _PageGeometry, font: str, items: Iterable[TextItem]) -> str:
     return "".join(_line_ops(geo, font, item) for item in items)
+
+
+# Text-showing operators. In render mode 3 (invisible) they only feed search
+# and copy/paste, which is exactly what an OCR text layer is.
+_SHOW_TEXT = {"Tj", "TJ", "'", '"'}
+
+
+def _strip_invisible_ops(instructions, tr: int, forms: list) -> tuple[list, int]:
+    """Drop invisible text from parsed content; returns (instructions, removed)."""
+    out = []
+    removed = 0
+    stack: list[int] = []
+    for inst in instructions:
+        op = str(inst.operator)
+        if op == "q":
+            stack.append(tr)
+        elif op == "Q":
+            tr = stack.pop() if stack else tr
+        elif op == "Tr" and inst.operands:
+            with contextlib.suppress(TypeError, ValueError):
+                tr = int(inst.operands[0])
+        elif op == "Do" and inst.operands:
+            forms.append((inst.operands[0], tr))
+        elif op in _SHOW_TEXT and tr == 3:
+            removed += 1
+            # ' and " also move to the next line; keep that so any text after
+            # them stays where it was.
+            if op == "'":
+                out.append(pikepdf.ContentStreamInstruction([], pikepdf.Operator("T*")))
+            elif op == '"' and len(inst.operands) == 3:
+                aw, ac, _ = inst.operands
+                out.append(pikepdf.ContentStreamInstruction([aw], pikepdf.Operator("Tw")))
+                out.append(pikepdf.ContentStreamInstruction([ac], pikepdf.Operator("Tc")))
+                out.append(pikepdf.ContentStreamInstruction([], pikepdf.Operator("T*")))
+            continue
+        out.append(inst)
+    return out, removed
+
+
+def _strip_forms(resources, calls: list, seen: set) -> int:
+    """Strip invisible text from Form XObjects (OCRmyPDF puts its layer in one)."""
+    removed = 0
+    xobjects = resources.get("/XObject") if resources is not None else None
+    if xobjects is None:
+        return 0
+    for name, tr in calls:
+        xobj = xobjects.get(name)
+        if xobj is None or xobj.get("/Subtype") != pikepdf.Name.Form:
+            continue
+        key = xobj.objgen
+        if key != (0, 0) and key in seen:
+            continue
+        seen.add(key)
+        nested: list = []
+        ops, n = _strip_invisible_ops(pikepdf.parse_content_stream(xobj), tr, nested)
+        if n:
+            xobj.write(pikepdf.unparse_content_stream(ops))
+        removed += n
+        removed += _strip_forms(xobj.get("/Resources", resources), nested, seen)
+    return removed
+
+
+def strip_invisible_text(source: Path, output: Path, pages: set[int]) -> set[int]:
+    """Copy ``source`` to ``output`` without invisible text on ``pages``.
+
+    Removes an earlier OCR text layer (Tesseract/OCRmyPDF or any other engine,
+    all of which draw in render mode 3) so a new one can replace it. Visible
+    text is never touched. Returns the pages that had invisible text removed.
+    """
+    stripped: set[int] = set()
+    seen: set = set()
+    with pikepdf.open(source) as pdf:
+        for page_idx, page in enumerate(pdf.pages):
+            if page_idx not in pages:
+                continue
+            forms: list = []
+            ops, removed = _strip_invisible_ops(pikepdf.parse_content_stream(page), 0, forms)
+            if removed:
+                page.obj.Contents = pdf.make_stream(pikepdf.unparse_content_stream(ops))
+            removed += _strip_forms(page.obj.get("/Resources"), forms, seen)
+            if removed:
+                stripped.add(page_idx)
+        pdf.save(output)
+    logger.debug("Removed invisible text from %d page(s) of %s", len(stripped), output)
+    return stripped
 
 
 def add_text_layer(

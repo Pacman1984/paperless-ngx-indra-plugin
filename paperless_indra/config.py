@@ -77,6 +77,7 @@ class IndraSettings:
     mode: str
     content_format: str
     text_layer: bool
+    replace_text_layer: bool | None  # None: follow Paperless' OCR mode
     pdfa: bool
     model_dir: str | None
     keep_furniture: bool
@@ -93,6 +94,13 @@ class IndraSettings:
             mode=_env_choice("PAPERLESS_INDRA_MODE", ("auto", "ocr", "text"), "auto"),
             content_format=_env_choice("PAPERLESS_INDRA_CONTENT_FORMAT", ("markdown", "text"), "markdown"),
             text_layer=_env_bool("PAPERLESS_INDRA_TEXT_LAYER", True),
+            # Replace an existing invisible (OCR) text layer. Unset, it follows
+            # Paperless' OCR mode (redo/force), see core.replace_text_layer.
+            replace_text_layer=(
+                _env_bool("PAPERLESS_INDRA_REPLACE_TEXT_LAYER", False)
+                if _env_str("PAPERLESS_INDRA_REPLACE_TEXT_LAYER") is not None
+                else None
+            ),
             pdfa=_env_bool("PAPERLESS_INDRA_PDFA", True),
             model_dir=_env_str("PAPERLESS_INDRA_MODEL_DIR") or _env_str("INDRA_OCR_MODEL_DIR"),
             keep_furniture=_env_bool("PAPERLESS_INDRA_KEEP_FURNITURE", False),

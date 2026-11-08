@@ -13,7 +13,9 @@ layer**, so search, highlighting and the archive version keep working in Paperle
 - **Layout-aware content.** Document content is Indra's Markdown (headings, lists, tables), or plain text.
 - **Accurate text layer.** Invisible text is placed at Indra's line boxes. This includes scans that were
   fed in sideways or upside down: Indra turns them upright, and the plugin writes the text back in the
-  printed direction. Pages that already have a text layer are left untouched.
+  printed direction. Pages that already have a text layer are left untouched, unless
+  `PAPERLESS_INDRA_REPLACE_TEXT_LAYER` is on: then an old invisible OCR layer (Tesseract's, say) is
+  removed and replaced with Indra's. That is how existing documents are fixed with "Reprocess".
 - **Mixed PDFs.** With `PAPERLESS_INDRA_MODE=auto`, Indra reads a PDF's own text layer where it is sound
   and OCRs only the rest.
 - **PDF/A archives.** Archive PDFs are converted to PDF/A following `PAPERLESS_OCR_OUTPUT_TYPE` (OCRmyPDF
@@ -158,6 +160,7 @@ All settings are optional. A commented template is in
 | `PAPERLESS_INDRA_MODE` | `auto` | `auto` (PDF text layer where sound, OCR elsewhere), `ocr` (always OCR) or `text` |
 | `PAPERLESS_INDRA_CONTENT_FORMAT` | `markdown` | `markdown` or `text` |
 | `PAPERLESS_INDRA_TEXT_LAYER` | `true` | Write the invisible text layer and produce an archive PDF |
+w| `PAPERLESS_INDRA_REPLACE_TEXT_LAYER` | `true` if Paperless' OCR mode (web UI configuration or `PAPERLESS_OCR_MODE`) is `redo` or `force`, else `false` | Remove an existing invisible (OCR) text layer and write Indra's instead. Visible text is kept |
 | `PAPERLESS_INDRA_PDFA` | `true` | Convert the archive to PDF/A when `PAPERLESS_OCR_OUTPUT_TYPE` is `pdfa*` |
 | `PAPERLESS_INDRA_KEEP_FURNITURE` | `false` | Keep page headers and footers in the Markdown |
 | `PAPERLESS_INDRA_MATH` | `false` | Formulas as LaTeX. Needs the extra math models, which the image doesn't include |
@@ -215,8 +218,9 @@ These limits are Indra's own, as listed by Datalab for indra-ocr 1.1:
   VLM-based engines such as MinerU are stronger on hard layouts and handwriting. Combine the two with
   `workflow_only` (see above) if you need both. That combination needs Paperless 3.x; 2.x has no remote OCR
   routing.
-- **Ignored Paperless OCR settings.** `PAPERLESS_OCR_MODE` (`skip`/`redo`/`force`) and the
-  deskew/rotate/clean settings only apply to Tesseract. Indra turns pages upright itself, and the archive
+- **Ignored Paperless OCR settings.** The deskew/rotate/clean settings only apply to Tesseract.
+  The OCR mode (`PAPERLESS_OCR_MODE` or the web UI configuration) only sets the default of
+  `PAPERLESS_INDRA_REPLACE_TEXT_LAYER` (`redo`/`force` turn it on). Indra turns pages upright itself, and the archive
   keeps the original pages.
 
 ## Licenses
